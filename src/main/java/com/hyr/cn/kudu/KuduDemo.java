@@ -9,6 +9,7 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.List;
 
 /*******************************************************************************
@@ -46,7 +47,7 @@ public class KuduDemo {
     }
 
     /**
-     * 建表
+     * Hash分区方式建表
      *
      * @throws KuduException
      */
@@ -67,12 +68,130 @@ public class KuduDemo {
             //按照id.hashcode % 分区数 = 分区号
             // 分区数
             int numBuckets = 8;
+            // Hash分区
             options.addHashPartitions(hashKeys, numBuckets);
-            // 设置副本数为1
+            // 设置副本数为3
             options.setNumReplicas(3);
             kuduClient.createTable(tableName, schema, options);
         } else {
-            kuduClient.deleteTable("user");
+            kuduClient.deleteTable(tableName);
+        }
+    }
+
+    /**
+     * 预分区模式建表 范围分区
+     *
+     * @throws KuduException
+     */
+    @Test
+    public void prePartitionCreateTable() throws KuduException {
+        String prePartitionTableName = "prepartitiontable";
+        if (!kuduClient.tableExists(prePartitionTableName)) {
+            ArrayList<ColumnSchema> columnSchemas = new ArrayList<ColumnSchema>();
+            columnSchemas.add(new ColumnSchema.ColumnSchemaBuilder("id", Type.INT32).key(true).build());
+            columnSchemas.add(new ColumnSchema.ColumnSchemaBuilder("name", Type.STRING).build());
+            columnSchemas.add(new ColumnSchema.ColumnSchemaBuilder("date", Type.INT32).build());
+            columnSchemas.add(new ColumnSchema.ColumnSchemaBuilder("money", Type.DOUBLE).build());
+            Schema schema = new Schema(columnSchemas);
+
+            CreateTableOptions options = new CreateTableOptions();
+            //设置范围分区的分区规则
+            List<String> parcols = new LinkedList<String>();
+            parcols.add("id");
+            //设置按照哪个字段进行range分区
+            options.setRangePartitionColumns(parcols);
+            // 范围分区
+            /*
+                RANGE (id) (
+                    PARTITION 0 <= VALUES < 10,
+                    PARTITION 10 <= VALUES < 20,
+                    PARTITION 20 <= VALUES < 30,
+                    PARTITION 30 <= VALUES < 40,
+                    PARTITION 40 <= VALUES < 50,
+                    PARTITION 50 <= VALUES < 60,
+                    PARTITION 60 <= VALUES < 70,
+                    PARTITION 70 <= VALUES < 80,
+                    PARTITION 80 <= VALUES < 90
+                )
+             */
+            int count = 0;
+            for (int i = 1; i < 10; i++) {
+                PartialRow lower = schema.newPartialRow();
+                lower.addInt("id", count);
+                PartialRow upper = schema.newPartialRow();
+                count += 10;
+                upper.addInt("id", count);
+                options.addRangePartition(lower, upper);
+            }
+
+            // 设置副本数为3
+            options.setNumReplicas(3);
+            kuduClient.createTable(prePartitionTableName, schema, options);
+        } else {
+            kuduClient.deleteTable(prePartitionTableName);
+        }
+    }
+
+    /**
+     * 多级分区建表 Hash分区+范围分区
+     *
+     * @throws KuduException
+     */
+    @Test
+    public void multilevelCreateTable() throws KuduException {
+        String multilevelTableName = "multileveltable";
+        if (!kuduClient.tableExists(multilevelTableName)) {
+            ArrayList<ColumnSchema> columnSchemas = new ArrayList<ColumnSchema>();
+            columnSchemas.add(new ColumnSchema.ColumnSchemaBuilder("id", Type.INT32).key(true).build());
+            columnSchemas.add(new ColumnSchema.ColumnSchemaBuilder("name", Type.STRING).build());
+            columnSchemas.add(new ColumnSchema.ColumnSchemaBuilder("date", Type.INT32).build());
+            columnSchemas.add(new ColumnSchema.ColumnSchemaBuilder("money", Type.DOUBLE).build());
+            Schema schema = new Schema(columnSchemas);
+
+            CreateTableOptions options = new CreateTableOptions();
+            //设置范围分区的分区规则
+            List<String> parcols = new LinkedList<String>();
+            parcols.add("id");
+
+            //按照id.hashcode % 分区数 = 分区号
+            // 分区数
+            int numBuckets = 3;
+            // Hash分区
+            options.addHashPartitions(parcols, numBuckets);
+            //设置按照哪个字段进行range分区
+            options.setRangePartitionColumns(parcols);
+
+            // 范围分区
+            int count = 0;
+            for (int i = 1; i < 10; i++) {
+                PartialRow lower = schema.newPartialRow();
+                lower.addInt("id", count);
+                PartialRow upper = schema.newPartialRow();
+                count += 10;
+                upper.addInt("id", count);
+                options.addRangePartition(lower, upper);
+            }
+
+            /*
+                HASH (id) PARTITIONS 3,
+                RANGE (id) (
+                    PARTITION 0 <= VALUES < 10,
+                    PARTITION 10 <= VALUES < 20,
+                    PARTITION 20 <= VALUES < 30,
+                    PARTITION 30 <= VALUES < 40,
+                    PARTITION 40 <= VALUES < 50,
+                    PARTITION 50 <= VALUES < 60,
+                    PARTITION 60 <= VALUES < 70,
+                    PARTITION 70 <= VALUES < 80,
+                    PARTITION 80 <= VALUES < 90
+                )
+             */
+
+            // 设置副本数为3
+            options.setNumReplicas(3);
+            kuduClient.createTable(multilevelTableName, schema, options);
+        } else {
+            kuduClient.deleteTable(multilevelTableName);
         }
     }
 
@@ -87,7 +206,7 @@ public class KuduDemo {
         final KuduSession kuduSession = kuduClient.newSession();
         kuduSession.setFlushMode(SessionConfiguration.FlushMode.AUTO_FLUSH_SYNC);
 
-        for (int i = 0; i <= 1000000; i++) {
+        for (int i = 0; i <= 10000000; i++) {
             // 打开表
             KuduTable userTable = kuduClient.openTable(tableName);
             Insert insert = userTable.newInsert();
@@ -130,7 +249,10 @@ public class KuduDemo {
         KuduPredicate moneyPredicate = KuduPredicate.newComparisonPredicate(schema.getColumn("money"), KuduPredicate.ComparisonOp.GREATER_EQUAL, 90000.0);
         KuduPredicate namePredicate = KuduPredicate.newComparisonPredicate(schema.getColumn("name"), KuduPredicate.ComparisonOp.EQUAL, "wang96556");
 
-        KuduScanner kuduScanner = kuduScannerBuilder.addPredicate(namePredicate).addPredicate(moneyPredicate).build();
+        KuduScanner kuduScanner = kuduScannerBuilder
+                .addPredicate(namePredicate)
+                .addPredicate(moneyPredicate)
+                .build();
         while (kuduScanner.hasMoreRows()) {
             RowResultIterator rowResults = kuduScanner.nextRows();
             while (rowResults.hasNext()) {

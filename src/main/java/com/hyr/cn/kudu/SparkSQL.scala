@@ -1,7 +1,7 @@
 package com.hyr.cn.kudu
 
 import org.apache.kudu.client.CreateTableOptions
-import org.apache.kudu.spark.kudu.KuduContext
+import org.apache.kudu.spark.kudu.{KuduContext, KuduWriteOptions}
 import org.apache.spark.sql.SparkSession
 
 /** *****************************************************************************
@@ -39,16 +39,16 @@ object SparkSQL {
       test_table, dataframe.schema, Seq("id"),
       new CreateTableOptions()
         .setNumReplicas(3)
-        .addHashPartitions(List("id").asJava, 3))
+        .addHashPartitions(List("id").asJava, 60))
 
     // Check for the existence of a Kudu table
     kuduContext.tableExists(test_table)
 
-    // Insert data  dataframe的每个分片(kudu Table的每个Tablet)都会生成一个task
+    // Insert data  kudu Table的每个Tablet分片都会生成一个task
     kuduContext.insertRows(dataframe, test_table)
 
-    // Delete data
-    kuduContext.deleteRows(dataframe, test_table)
+    // Delete data  repartition:进行重分区以匹配目标表table, repartitionSort:触发重分区时进行排序, 两者合起来实际上是执行repartitionAndSortWithinPartitions()
+    kuduContext.deleteRows(dataframe, test_table,new KuduWriteOptions(ignoreDuplicateRowErrors = true, ignoreNull = true, repartition = true, repartitionSort = true))
 
     // Upsert data
     kuduContext.upsertRows(dataframe, test_table)
