@@ -188,22 +188,4 @@ public class KuduDemo {
         kuduSession.close();
     }
 
-    /**
-     * 查询表的信息
-     *
-     * @throws KuduException
-     */
-    @Test
-    public void queryTableInfo() throws KuduException {
-        KuduSession kuduSession = kuduClient.newSession();
-        //设置手动刷新
-        kuduSession.setFlushMode(SessionConfiguration.FlushMode.MANUAL_FLUSH);
-        KuduTable table = kuduClient.openTable(tableName);
-        Delete delete = table.newDelete();
-        delete.getRow().addInt("id", 96555);
-        kuduSession.apply(delete);
-        kuduSession.flush();
-        kuduSession.close();
-    }
-
 }
