@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration status="warn">
+    <!-- 先定义所有的appender -->
+    <appenders>
+        <!-- 控制台输出 -->
+        <Console name="console" target="SYSTEM_OUT">
+            <PatternLayout pattern="[%thread] [%d{yyyy-MM-dd HH:mm:ss}] %-5level %L %M - %msg%xEx%n"/>
+        </Console>
+
+    </appenders>
+
+    <!-- 然后定义logger，只有定义了logger并引入的appender，appender才会生效 -->
+    <loggers>
+        <!-- 建立一个默认的root的logger -->
+        <root level="info">
+            <appender-ref ref="console"/>
+        </root>
+    </loggers>
+</configuration>
