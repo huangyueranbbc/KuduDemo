@@ -5,22 +5,26 @@ import org.apache.kudu.spark.kudu.KuduContext
 import org.apache.spark.sql.SparkSession
 
 /** *****************************************************************************
+ *
  * @date 2021-03-01 4:51 下午
  * @author: <a href=mailto:huangyr@>huangyr</a>
  * @Description: spark查询Kudu
- * *****************************************************************************/
+ ******************************************************************************/
 object SparkSQL {
 
   def main(args: Array[String]): Unit = {
     val kuduMaster = "server1:7051,server2:7051,server3:7051"
-    val spark = SparkSession.builder.appName(this.getClass.getName).master("local[1]").getOrCreate
+    val spark = SparkSession.builder
+      .appName(this.getClass.getName)
+      .master("local[8]") // cores设置为和表分片数一致
+      .getOrCreate
     // Read a table from Kudu
     val dataframe = spark.read
       .options(Map("kudu.master" -> kuduMaster, "kudu.table" -> "user"))
       .format("kudu").load
 
     // Query using the Spark API...
-    dataframe.select("*").filter("id >= 5").show(numRows = 200, truncate = false)
+    dataframe.select("*").filter("id >= 5").show(numRows = 20, truncate = false)
 
     // 创建kuducontext
     val kuduContext = new KuduContext(kuduMaster, spark.sparkContext)
@@ -40,7 +44,7 @@ object SparkSQL {
     // Check for the existence of a Kudu table
     kuduContext.tableExists(test_table)
 
-    // Insert data
+    // Insert data  dataframe的每个分片(kudu Table的每个Tablet)都会生成一个task
     kuduContext.insertRows(dataframe, test_table)
 
     // Delete data
@@ -63,6 +67,10 @@ object SparkSQL {
       .options(Map("kudu.master" -> kuduMaster, "kudu.table" -> test_table))
       .mode("append")
       .format("kudu").save
+
+    // http://localhost:4040
+    Thread.sleep(10000000)
+    spark.close()
   }
 
 }
